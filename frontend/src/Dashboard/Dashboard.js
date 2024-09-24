@@ -16,7 +16,7 @@ import {
   Divider,
 } from "@mui/material";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import axios from "axios"; // Import Axios
+import axios from "axios";
 
 const Dashboard = () => {
   const [file, setFile] = useState(null);
@@ -24,7 +24,7 @@ const Dashboard = () => {
   const [errorSnackbarOpen, setErrorSnackbarOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB in bytes
+  const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: {
@@ -69,12 +69,11 @@ const Dashboard = () => {
     setSnackbarOpen(false);
   };
 
-  // Function to handle file upload to the backend
   const handleUploadFile = async () => {
     if (!file) return;
 
     const formData = new FormData();
-    formData.append("file", file); // Append file to formData
+    formData.append("file", file);
 
     try {
       const response = await axios.post(
@@ -86,7 +85,7 @@ const Dashboard = () => {
           },
         }
       );
-      console.log(response.data.message); // Handle success response
+      console.log(response.data.message);
       alert("File uploaded successfully: " + response.data.message);
     } catch (error) {
       console.error(
@@ -143,7 +142,7 @@ const Dashboard = () => {
             <Button
               variant="contained"
               color="primary"
-              onClick={handleUploadFile} // Upload the file on click
+              onClick={handleUploadFile}
               disabled={!file}
             >
               Generate Report
@@ -163,7 +162,6 @@ const Dashboard = () => {
                 </Typography>
                 <Divider />
                 <List dense>
-                  {/* List of expected columns */}
                   <ListItem>
                     <ListItemText primary="Donor ID" />
                   </ListItem>

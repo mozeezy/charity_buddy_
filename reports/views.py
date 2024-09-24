@@ -9,6 +9,8 @@ from django.core.files.storage import default_storage
 from donations.models import Donor, Donation
 from reports.models import Cause
 import chardet
+from django.http import HttpResponse
+from .utils import generate_donor_report
 
 
 class FileUploadView(APIView):
@@ -17,13 +19,11 @@ class FileUploadView(APIView):
     def post(self, request, *args, **kwargs):
         file = request.FILES.get("file")
 
-        # Validate if the file exists
         if not file:
             return Response(
                 {"error": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Validate file type (Excel or CSV)
         file_extension = os.path.splitext(file.name)[1].lower()
         if file_extension not in [".xlsx", ".xls", ".csv"]:
             return Response(
@@ -31,12 +31,11 @@ class FileUploadView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Save the file temporarily
         file_path = default_storage.save(f"temp/{file.name}", file)
         file_full_path = os.path.join(default_storage.location, file_path)
 
         try:
-            # Process CSV or Excel files
+
             if file_extension == ".csv":
                 with open(file_full_path, "rb") as raw_file:
                     raw_data = raw_file.read()
@@ -48,7 +47,6 @@ class FileUploadView(APIView):
             elif file_extension in [".xlsx", ".xls"]:
                 df = pd.read_excel(file_full_path)
 
-            # Required columns
             required_columns = [
                 "Donor ID",
                 "Donation ID",
@@ -69,9 +67,8 @@ class FileUploadView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # Process each row in the DataFrame
             for _, row in df.iterrows():
-                # Get or create the donor
+
                 donor, created = Donor.objects.get_or_create(
                     donor_id=row["Donor ID"],
                     defaults={
@@ -83,23 +80,18 @@ class FileUploadView(APIView):
                     },
                 )
 
-                # Get or create the cause using Cause ID and Cause Name
-                cause_id = row["Cause ID"]  # The Cause ID from the file
-                cause_name = row["Cause"]  # The Cause Name from the file
+                cause_id = row["Cause ID"]
+                cause_name = row["Cause"]
 
-                # FileUploadView - handle images being nullable
                 cause, created = Cause.objects.get_or_create(
-                    cause_id=cause_id,  # Use Cause ID as the primary key
+                    cause_id=cause_id,
                     defaults={
                         "name": cause_name,
                         "description": row.get("Description", ""),
-                        "images": row.get(
-                            "Images", None
-                        ),  # Provide None if images are missing
+                        "images": row.get("Images", None),
                     },
                 )
 
-                # Parse the date and time
                 try:
                     donation_date = datetime.strptime(
                         row["Date of Donation"], "%Y-%m-%d"
@@ -113,21 +105,20 @@ class FileUploadView(APIView):
                 try:
                     donation_time = datetime.strptime(
                         row["Time of Donation"], "%I:%M %p"
-                    ).time()  # For example, '02:30 PM'
+                    ).time()
                 except ValueError:
                     return Response(
                         {"error": f"Invalid time format in row: {row}"},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-                # Create the donation entry
                 Donation.objects.create(
                     donor=donor,
                     donation_id=row["Donation ID"],
                     amount=row["Donation Amount"],
-                    date=donation_date,  # Parsed date
-                    time=donation_time,  # Parsed time
-                    cause=cause,  # Link to Cause model using cause_id
+                    date=donation_date,
+                    time=donation_time,
+                    cause=cause,
                     payment_type=row.get("Payment Type", None),
                     recurrence=row.get("Recurrence Status", None),
                     tax_receipt_status=row.get("Tax Receipt Status", False),
@@ -139,7 +130,7 @@ class FileUploadView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         finally:
-            # Clean up the temporary file
+
             if os.path.exists(file_full_path):
                 os.remove(file_full_path)
 
@@ -147,3 +138,25 @@ class FileUploadView(APIView):
             {"message": "File uploaded and processed successfully!"},
             status=status.HTTP_200_OK,
         )
+
+
+class GenerateReportView(APIView):
+    def get(self, request, donor_id, *args, **kwargs):
+        try:
+            donor = Donor.objects.get(donor_id=donor_id)
+            donations = Donation.objects.filter(donor=donor)
+
+            if not donations.exists():
+                return HttpResponse("No donations found for this donor.", status=404)
+
+            pdf_buffer = generate_donor_report(donor, donations)
+
+            response = HttpResponse(pdf_buffer, content_type="application/pdf")
+            response["Content-Disposition"] = (
+                f'inline; filename="{donor.first_name}_{donor.last_name}_report.pdf"'
+            )
+
+            return response
+
+        except Donor.DoesNotExist:
+            return HttpResponse("Donor not found.", status=404)
