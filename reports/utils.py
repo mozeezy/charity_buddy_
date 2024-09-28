@@ -8,6 +8,8 @@ from reportlab.lib.utils import ImageReader
 from io import BytesIO
 import matplotlib
 
+
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -197,6 +199,5 @@ def generate_donor_report(donor, donations):
     )
 
     pdf.save()
-
     buffer.seek(0)
     return buffer

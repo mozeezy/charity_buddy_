@@ -4,49 +4,57 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework import status
 import pandas as pd
-import os
-from django.core.files.storage import default_storage
+from storages.backends.gcloud import GoogleCloudStorage
 from donations.models import Donor, Donation
-from reports.models import Cause
+from reports.models import Cause, Report
 import chardet
+from .tasks import process_donor_report
+from collections import defaultdict
 from django.http import HttpResponse
-from .utils import generate_donor_report
 
 
 class FileUploadView(APIView):
     parser_classes = (MultiPartParser, FormParser)
 
     def post(self, request, *args, **kwargs):
+        # Create an instance of GoogleCloudStorage
+        google_storage = GoogleCloudStorage()
+
         file = request.FILES.get("file")
 
+        # Validate if the file exists
         if not file:
             return Response(
                 {"error": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        file_extension = os.path.splitext(file.name)[1].lower()
-        if file_extension not in [".xlsx", ".xls", ".csv"]:
+        # Check the file extension to ensure it's an Excel or CSV file
+        file_extension = file.name.split(".")[-1].lower()
+        if file_extension not in ["xlsx", "xls", "csv"]:
             return Response(
                 {"error": "Invalid file type. Only Excel or CSV files are allowed."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        file_path = default_storage.save(f"temp/{file.name}", file)
-        file_full_path = os.path.join(default_storage.location, file_path)
+        # Save the uploaded file using GoogleCloudStorage
+        file_path = google_storage.save(f"temp/{file.name}", file)
 
         try:
+            # Open the file using GoogleCloudStorage
+            with google_storage.open(file_path, "rb") as raw_file:
+                # Detect file encoding using chardet
+                raw_data = raw_file.read()
+                result = chardet.detect(raw_data)
+                encoding = result["encoding"]
+                raw_file.seek(0)  # Reset the file pointer to the beginning
 
-            if file_extension == ".csv":
-                with open(file_full_path, "rb") as raw_file:
-                    raw_data = raw_file.read()
-                    result = chardet.detect(raw_data)
-                    encoding = result["encoding"]
+                # Process CSV or Excel files using the detected encoding
+                if file_extension == "csv":
+                    df = pd.read_csv(raw_file, encoding=encoding)
+                else:
+                    df = pd.read_excel(raw_file)
 
-                df = pd.read_csv(file_full_path, encoding=encoding)
-
-            elif file_extension in [".xlsx", ".xls"]:
-                df = pd.read_excel(file_full_path)
-
+            # Required columns
             required_columns = [
                 "Donor ID",
                 "Donation ID",
@@ -67,9 +75,12 @@ class FileUploadView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            for _, row in df.iterrows():
+            # Collect donations per donor
+            donations_per_donor = defaultdict(list)
 
-                donor, created = Donor.objects.get_or_create(
+            for _, row in df.iterrows():
+                # Create or get the donor object
+                donor, _ = Donor.objects.get_or_create(
                     donor_id=row["Donor ID"],
                     defaults={
                         "first_name": row["Donor First Name"],
@@ -80,39 +91,34 @@ class FileUploadView(APIView):
                     },
                 )
 
-                cause_id = row["Cause ID"]
-                cause_name = row["Cause"]
-
-                cause, created = Cause.objects.get_or_create(
-                    cause_id=cause_id,
+                # Create or get the cause object
+                cause, _ = Cause.objects.get_or_create(
+                    cause_id=row["Cause ID"],
                     defaults={
-                        "name": cause_name,
+                        "name": row["Cause"],
                         "description": row.get("Description", ""),
                         "images": row.get("Images", None),
                     },
                 )
 
+                # Parse the date and time of donation
                 try:
                     donation_date = datetime.strptime(
                         row["Date of Donation"], "%Y-%m-%d"
                     ).date()
-                except ValueError:
-                    return Response(
-                        {"error": f"Invalid date format in row: {row}"},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-
-                try:
                     donation_time = datetime.strptime(
                         row["Time of Donation"], "%I:%M %p"
                     ).time()
-                except ValueError:
+                except ValueError as ve:
                     return Response(
-                        {"error": f"Invalid time format in row: {row}"},
+                        {
+                            "error": f"Invalid date or time format in row: {row}. Error: {str(ve)}"
+                        },
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-                Donation.objects.create(
+                # Create the donation entry
+                donation = Donation.objects.create(
                     donor=donor,
                     donation_id=row["Donation ID"],
                     amount=row["Donation Amount"],
@@ -124,15 +130,21 @@ class FileUploadView(APIView):
                     tax_receipt_status=row.get("Tax Receipt Status", False),
                 )
 
+                # Add the donation to the donor's list
+                donations_per_donor[donor.donor_id].append(donation)
+
+            # Trigger report generation for each unique donor
+            for donor_id in donations_per_donor.keys():
+                process_donor_report.delay(donor_id)
+
         except Exception as e:
             return Response(
                 {"error": f"Error processing file: {str(e)}"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         finally:
-
-            if os.path.exists(file_full_path):
-                os.remove(file_full_path)
+            # Delete the uploaded file from Google Cloud Storage
+            google_storage.delete(file_path)
 
         return Response(
             {"message": "File uploaded and processed successfully!"},
@@ -140,23 +152,32 @@ class FileUploadView(APIView):
         )
 
 
-class GenerateReportView(APIView):
+class FetchReportView(APIView):
     def get(self, request, donor_id, *args, **kwargs):
+        # Create an instance of GoogleCloudStorage
+        google_storage = GoogleCloudStorage()
+
         try:
-            donor = Donor.objects.get(donor_id=donor_id)
-            donations = Donation.objects.filter(donor=donor)
+            # Find the latest successful report for the donor
+            report = Report.objects.filter(
+                donor__donor_id=donor_id, status="SUCCESS"
+            ).latest("date_generated")
 
-            if not donations.exists():
-                return HttpResponse("No donations found for this donor.", status=404)
+            # Check if the report file exists in Google Cloud Storage
+            if google_storage.exists(report.file_path):
+                # Open the file using Google Cloud Storage
+                with google_storage.open(report.file_path, "rb") as f:
+                    response = HttpResponse(f.read(), content_type="application/pdf")
+                    response["Content-Disposition"] = (
+                        f'inline; filename="{report.donor.first_name}_{report.donor.last_name}_report.pdf"'
+                    )
+                    return response
+            else:
+                return HttpResponse(
+                    "Report file not found in Google Cloud Storage.", status=404
+                )
 
-            pdf_buffer = generate_donor_report(donor, donations)
-
-            response = HttpResponse(pdf_buffer, content_type="application/pdf")
-            response["Content-Disposition"] = (
-                f'inline; filename="{donor.first_name}_{donor.last_name}_report.pdf"'
+        except Report.DoesNotExist:
+            return HttpResponse(
+                "No successful report found for this donor.", status=404
             )
-
-            return response
-
-        except Donor.DoesNotExist:
-            return HttpResponse("Donor not found.", status=404)

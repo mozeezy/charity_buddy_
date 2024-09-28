@@ -13,6 +13,8 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+from google.oauth2 import service_account
+
 
 load_dotenv()
 
@@ -45,6 +47,7 @@ INSTALLED_APPS = [
     "reports",
     "corsheaders",
     "rest_framework",
+    "storages",
 ]
 
 MIDDLEWARE = [
@@ -138,3 +141,14 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
 ]
+
+CELERY_BROKER_URL = "redis://localhost:6379/0"
+CELERY_RESULT_BACKEND = "redis://localhost:6379/0"
+
+
+DEFAULT_FILE_STORAGE = "storages.backends.gcloud.GoogleCloudStorage"
+GS_BUCKET_NAME = os.getenv("BUCKET_NAME")
+GS_CREDENTIALS = service_account.Credentials.from_service_account_file(
+    os.getenv("GS_CREDENTIALS")
+)
+MEDIA_URL = f"https://storage.googleapis.com/{GS_BUCKET_NAME}/"

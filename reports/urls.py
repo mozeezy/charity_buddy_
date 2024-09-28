@@ -1,9 +1,7 @@
 from django.urls import path
-from .views import FileUploadView, GenerateReportView
+from .views import FileUploadView, FetchReportView
 
 urlpatterns = [
     path("upload/", FileUploadView.as_view(), name="file-upload"),
-    path(
-        "generate/<str:donor_id>/", GenerateReportView.as_view(), name="generate-report"
-    ),
+    path("get-report/", FetchReportView.as_view(), name="get-report"),
 ]
