@@ -11,6 +11,25 @@ import chardet
 from .tasks import process_donor_report
 from collections import defaultdict
 from django.http import HttpResponse
+from rest_framework.pagination import PageNumberPagination
+from celery.result import AsyncResult
+
+
+from datetime import datetime
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework import status
+import pandas as pd
+from storages.backends.gcloud import GoogleCloudStorage
+from donations.models import Donor, Donation
+from reports.models import Cause, Report
+import chardet
+from .tasks import process_donor_report
+from collections import defaultdict
+from django.http import HttpResponse
+from rest_framework.pagination import PageNumberPagination
+from celery.result import AsyncResult
 
 
 class FileUploadView(APIView):
@@ -133,9 +152,11 @@ class FileUploadView(APIView):
                 # Add the donation to the donor's list
                 donations_per_donor[donor.donor_id].append(donation)
 
-            # Trigger report generation for each unique donor
+            # Trigger report generation for each unique donor and collect task IDs
+            task_ids = []
             for donor_id in donations_per_donor.keys():
-                process_donor_report.delay(donor_id)
+                task = process_donor_report.delay(donor_id)
+                task_ids.append(task.id)
 
         except Exception as e:
             return Response(
@@ -146,9 +167,13 @@ class FileUploadView(APIView):
             # Delete the uploaded file from Google Cloud Storage
             google_storage.delete(file_path)
 
+        # Return the list of task IDs
         return Response(
-            {"message": "File uploaded and processed successfully!"},
-            status=status.HTTP_200_OK,
+            {
+                "message": "File uploaded and processed successfully!",
+                "task_ids": task_ids,
+            },
+            status=status.HTTP_202_ACCEPTED,
         )
 
 
@@ -180,4 +205,88 @@ class FetchReportView(APIView):
         except Report.DoesNotExist:
             return HttpResponse(
                 "No successful report found for this donor.", status=404
+            )
+
+
+class DonorReportsListView(APIView):
+    def get(self, request):
+        try:
+            search_query = request.query_params.get(
+                "search", ""
+            )  # Get the search query parameter
+            donors = Donor.objects.all()
+
+            # Filter donors by search query if it exists
+            if search_query:
+                donors = donors.filter(
+                    first_name__icontains=search_query
+                ) | donors.filter(last_name__icontains=search_query)
+
+            donor_reports = []
+
+            for donor in donors:
+                # Get the latest successful report for each donor
+                latest_report = (
+                    Report.objects.filter(donor=donor, status="SUCCESS")
+                    .order_by("-date_generated")
+                    .first()
+                )
+                if latest_report:
+                    donor_reports.append(
+                        {
+                            "donor_id": donor.donor_id,
+                            "full_name": f"{donor.first_name} {donor.last_name}",
+                            "email": donor.email,
+                            "report_url": latest_report.file_path,
+                            "status": latest_report.status,
+                        }
+                    )
+
+            # Implement pagination
+            paginator = PageNumberPagination()
+            paginator.page_size = 10  # Number of reports per page
+            paginated_reports = paginator.paginate_queryset(donor_reports, request)
+
+            return paginator.get_paginated_response(paginated_reports)
+
+        except Exception as e:
+            return Response(
+                {"error": f"Error fetching donor reports: {str(e)}"}, status=500
+            )
+
+
+class ReportStatusView(APIView):
+    def get(self, request, task_id):
+        try:
+            # Get the task result using the provided task_id
+            task_result = AsyncResult(task_id)
+
+            # Determine the task status
+            if task_result.state == "PENDING":
+                response = {"status": "PENDING", "progress": 0}
+            elif task_result.state == "PROGRESS":
+                response = {
+                    "status": "IN_PROGRESS",
+                    "progress": task_result.info.get("progress", 0),
+                }
+            elif task_result.state == "SUCCESS":
+                response = {
+                    "status": "SUCCESS",
+                    "progress": 100,
+                    "message": task_result.result,
+                }
+            elif task_result.state == "FAILURE":
+                response = {
+                    "status": "FAILED",
+                    "progress": 100,
+                    "error": str(task_result.info),  # Include error message
+                }
+            else:
+                response = {"status": task_result.state, "progress": 0}
+
+            return Response(response)
+
+        except Exception as e:
+            return Response(
+                {"error": f"Error fetching task status: {str(e)}"}, status=500
             )

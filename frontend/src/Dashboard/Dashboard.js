@@ -11,18 +11,24 @@ import {
   Tooltip,
   IconButton,
   List,
-  ListItem,
-  ListItemText,
   Divider,
+  TextField,
 } from "@mui/material";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import DonorReportsTable from "../DonorReportsTable/DonorReportsTable";
+import ReportProgressBar from "../ReportProgressBar/ReportProgressBar";
 import axios from "axios";
 
 const Dashboard = () => {
   const [file, setFile] = useState(null);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [errorSnackbarOpen, setErrorSnackbarOpen] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [taskId, setTaskId] = useState(null);
+  const [refreshReportsTable, setRefreshReportsTable] = useState(false); // State to trigger refresh
+  const [searchQuery, setSearchQuery] = useState(""); // State for search query
 
   const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
@@ -51,6 +57,7 @@ const Dashboard = () => {
       }
 
       setFile(uploadedFile);
+      setSuccessMessage("File validated and ready for upload!");
       setSnackbarOpen(true);
     },
     multiple: false,
@@ -85,8 +92,12 @@ const Dashboard = () => {
           },
         }
       );
-      console.log(response.data.message);
-      alert("File uploaded successfully: " + response.data.message);
+
+      setTaskId(response.data.task_ids);
+      setSuccessMessage(
+        "File uploaded successfully! Report generation in progress."
+      );
+      setSnackbarOpen(true);
     } catch (error) {
       console.error(
         "Error uploading file:",
@@ -95,6 +106,11 @@ const Dashboard = () => {
       setErrorMessage(error.response?.data?.error || "File upload failed.");
       setErrorSnackbarOpen(true);
     }
+  };
+
+  // Function to refresh the reports table
+  const refreshReports = () => {
+    setRefreshReportsTable((prev) => !prev);
   };
 
   return (
@@ -145,7 +161,7 @@ const Dashboard = () => {
               onClick={handleUploadFile}
               disabled={!file}
             >
-              Generate Report
+              Generate Reports
             </Button>
             <Button variant="outlined" color="error" onClick={handleRemoveFile}>
               Remove File
@@ -161,56 +177,7 @@ const Dashboard = () => {
                   Please upload a file with the following columns:
                 </Typography>
                 <Divider />
-                <List dense>
-                  <ListItem>
-                    <ListItemText primary="Donor ID" />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Donation ID" />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Donor First Name" />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Donor Last Name" />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Donor Email" />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Donation Amount" />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Charity" />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Cause ID" />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Cause" />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Date of Donation" />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Time of Donation" />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Phone Number" />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Address" />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Payment Type" />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Recurrence Status" />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Tax Receipt Status" />
-                  </ListItem>
-                </List>
+                <List dense>{/* List of columns */}</List>
               </>
             }
           >
@@ -220,6 +187,9 @@ const Dashboard = () => {
           </Tooltip>
         </Box>
 
+        {taskId && <ReportProgressBar taskIds={taskId} />}
+
+        {/* Success Snackbar */}
         <Snackbar
           open={snackbarOpen}
           autoHideDuration={6000}
@@ -227,10 +197,11 @@ const Dashboard = () => {
           anchorOrigin={{ vertical: "top", horizontal: "right" }}
         >
           <Alert onClose={handleCloseSnackbar} severity="success">
-            File uploaded successfully!
+            {successMessage}
           </Alert>
         </Snackbar>
 
+        {/* Error Snackbar */}
         <Snackbar
           open={errorSnackbarOpen}
           autoHideDuration={6000}
@@ -241,6 +212,32 @@ const Dashboard = () => {
             {errorMessage}
           </Alert>
         </Snackbar>
+      </Grid>
+      <Grid item style={{ width: "80%", marginTop: 40 }}>
+        <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Typography variant="h5" gutterBottom>
+            Donor Reports
+          </Typography>
+          <Box display="flex" alignItems="center">
+            {/* Search Bar */}
+            <TextField
+              label="Search by name"
+              variant="outlined"
+              size="small"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ marginRight: "0.5rem" }} // Space between search and refresh
+            />
+            {/* Refresh Button */}
+            <IconButton color="primary" onClick={refreshReports}>
+              <RefreshIcon />
+            </IconButton>
+          </Box>
+        </Box>
+        <DonorReportsTable
+          refreshTrigger={refreshReportsTable}
+          searchQuery={searchQuery}
+        />
       </Grid>
     </Grid>
   );

@@ -17,7 +17,7 @@ class Cause(models.Model):
 
 class Report(models.Model):
     donor = models.ForeignKey("donations.Donor", on_delete=models.CASCADE)
-    file_path = models.CharField(max_length=255)
+    file_path = models.TextField()
     date_generated = models.DateTimeField(auto_now_add=True)
     status = models.CharField(
         max_length=20, choices=[("SUCCESS", "Success"), ("FAILED", "Failed")]

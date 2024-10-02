@@ -148,7 +148,35 @@ CELERY_RESULT_BACKEND = "redis://localhost:6379/0"
 
 DEFAULT_FILE_STORAGE = "storages.backends.gcloud.GoogleCloudStorage"
 GS_BUCKET_NAME = os.getenv("BUCKET_NAME")
+
+
 GS_CREDENTIALS = service_account.Credentials.from_service_account_file(
     os.getenv("GS_CREDENTIALS")
 )
 MEDIA_URL = f"https://storage.googleapis.com/{GS_BUCKET_NAME}/"
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "DEBUG",  # Set to 'INFO' or 'ERROR' to control verbosity
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",  # You can set this to 'DEBUG' for more detailed logs
+            "propagate": False,
+        },
+        "charity_reports": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+    },
+}
