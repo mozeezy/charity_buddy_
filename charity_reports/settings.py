@@ -37,6 +37,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    "daphne",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -48,6 +49,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "rest_framework",
     "storages",
+    "channels",
 ]
 
 MIDDLEWARE = [
@@ -144,6 +146,11 @@ CORS_ALLOWED_ORIGINS = [
 
 CELERY_BROKER_URL = "redis://localhost:6379/0"
 CELERY_RESULT_BACKEND = "redis://localhost:6379/0"
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_IGNORE_RESULT = False
 
 
 DEFAULT_FILE_STORAGE = "storages.backends.gcloud.GoogleCloudStorage"
@@ -165,18 +172,29 @@ LOGGING = {
     },
     "root": {
         "handlers": ["console"],
-        "level": "DEBUG",  # Set to 'INFO' or 'ERROR' to control verbosity
+        "level": "DEBUG",
     },
     "loggers": {
         "django": {
             "handlers": ["console"],
-            "level": "INFO",  # You can set this to 'DEBUG' for more detailed logs
+            "level": "INFO",
             "propagate": False,
         },
         "charity_reports": {
             "handlers": ["console"],
             "level": "DEBUG",
             "propagate": False,
+        },
+    },
+}
+
+ASGI_APPLICATION = "charity_reports.asgi.application"
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],
         },
     },
 }

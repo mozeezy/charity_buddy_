@@ -19,7 +19,7 @@ const DonorReportsTable = ({ refreshTrigger, searchQuery }) => {
 
   useEffect(() => {
     fetchDonorReports(page, searchQuery);
-  }, [page, refreshTrigger, searchQuery]); // Add searchQuery to the dependency array
+  }, [page, refreshTrigger, searchQuery]); 
 
   const fetchDonorReports = async (page, searchQuery) => {
     try {

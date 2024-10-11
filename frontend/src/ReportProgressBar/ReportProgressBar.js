@@ -1,74 +1,67 @@
-import React, { useState, useEffect, useRef } from "react";
-import axios from "axios";
+import React, { useState, useEffect } from "react";
 import LinearProgress from "@mui/material/LinearProgress";
 import Box from "@mui/material/Box";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
 import Typography from "@mui/material/Typography";
 
-const ReportProgressBar = ({ taskIds }) => {
+const ReportProgressBar = ({ taskGroupId }) => {
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState("PENDING");
   const [snackbarOpen, setSnackbarOpen] = useState(false);
-  const intervalRef = useRef(null);
 
   useEffect(() => {
-    intervalRef.current = setInterval(() => {
-      fetchTaskStatus();
-    }, 2000);
+    if (!taskGroupId) return;
 
-    return () => clearInterval(intervalRef.current);
-  }, [taskIds]);
+    const socket = new WebSocket(
+      `ws://localhost:8000/ws/reports/progress/${taskGroupId}/`
+    );
 
-  const fetchTaskStatus = async () => {
-    try {
-      const taskStatuses = await Promise.all(
-        taskIds.map((taskId) =>
-          axios.get(`http://localhost:8000/api/reports/status/${taskId}/`)
-        )
-      );
+    socket.onopen = () => {
+      console.log("WebSocket connection established.");
+    };
 
-      let totalProgress = 0;
-      let completedTasks = 0;
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
 
-      taskStatuses.forEach((response) => {
-        const { status, progress } = response.data;
-        totalProgress += progress;
+      const roundedProgress = Math.round(data.progress);
 
-        if (status === "SUCCESS" || status === "FAILED") {
-          completedTasks += 1;
-        }
-      });
+      setProgress(roundedProgress);
+      setStatus(data.status);
 
-      const overallProgress = Math.round(totalProgress / taskIds.length);
-      setProgress(overallProgress);
-
-      if (completedTasks === taskIds.length) {
+      if (data.status === "SUCCESS" || data.status === "FAILED") {
         setSnackbarOpen(true);
-        clearInterval(intervalRef.current);
-        setStatus("COMPLETED");
+        socket.close();
       }
-    } catch (error) {
-      console.error("Error fetching task status:", error);
-    }
-  };
+    };
+
+    socket.onerror = (error) => {
+      console.error("WebSocket error:", error);
+    };
+
+    return () => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
+    };
+  }, [taskGroupId]);
 
   return (
     <Box mt={2} width="100%">
       <LinearProgress variant="determinate" value={progress} />
-      <Typography variant="body2" color="textSecondary" align="center" mt={1}>
-        {progress}% Complete
+      <Typography variant="body2" color="textSecondary" align="center">
+        {progress}% completed
       </Typography>
-      {status === "COMPLETED" && (
-        <Snackbar
-          open={snackbarOpen}
-          autoHideDuration={6000}
-          onClose={() => setSnackbarOpen(false)}
-          anchorOrigin={{ vertical: "top", horizontal: "right" }} // Dock Snackbar to the top right
-        >
-          <Alert severity="success" onClose={() => setSnackbarOpen(false)}>
+      {status === "SUCCESS" && (
+        <Snackbar open={snackbarOpen} autoHideDuration={6000}>
+          <Alert severity="success">
             Report generation completed successfully!
           </Alert>
+        </Snackbar>
+      )}
+      {status === "FAILED" && (
+        <Snackbar open={snackbarOpen} autoHideDuration={6000}>
+          <Alert severity="error">Report generation failed.</Alert>
         </Snackbar>
       )}
     </Box>

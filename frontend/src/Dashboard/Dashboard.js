@@ -26,9 +26,9 @@ const Dashboard = () => {
   const [errorSnackbarOpen, setErrorSnackbarOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
-  const [taskId, setTaskId] = useState(null);
-  const [refreshReportsTable, setRefreshReportsTable] = useState(false); // State to trigger refresh
-  const [searchQuery, setSearchQuery] = useState(""); // State for search query
+  const [taskGroupId, setTaskGroupId] = useState(null);
+  const [refreshReportsTable, setRefreshReportsTable] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
@@ -93,7 +93,7 @@ const Dashboard = () => {
         }
       );
 
-      setTaskId(response.data.task_ids);
+      setTaskGroupId(response.data.task_group_id);
       setSuccessMessage(
         "File uploaded successfully! Report generation in progress."
       );
@@ -108,7 +108,6 @@ const Dashboard = () => {
     }
   };
 
-  // Function to refresh the reports table
   const refreshReports = () => {
     setRefreshReportsTable((prev) => !prev);
   };
@@ -187,9 +186,8 @@ const Dashboard = () => {
           </Tooltip>
         </Box>
 
-        {taskId && <ReportProgressBar taskIds={taskId} />}
+        {taskGroupId && <ReportProgressBar taskGroupId={taskGroupId} />}
 
-        {/* Success Snackbar */}
         <Snackbar
           open={snackbarOpen}
           autoHideDuration={6000}
@@ -201,7 +199,6 @@ const Dashboard = () => {
           </Alert>
         </Snackbar>
 
-        {/* Error Snackbar */}
         <Snackbar
           open={errorSnackbarOpen}
           autoHideDuration={6000}
@@ -219,16 +216,15 @@ const Dashboard = () => {
             Donor Reports
           </Typography>
           <Box display="flex" alignItems="center">
-            {/* Search Bar */}
             <TextField
               label="Search by name"
               variant="outlined"
               size="small"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ marginRight: "0.5rem" }} // Space between search and refresh
+              style={{ marginRight: "0.5rem" }}
             />
-            {/* Refresh Button */}
+
             <IconButton color="primary" onClick={refreshReports}>
               <RefreshIcon />
             </IconButton>
