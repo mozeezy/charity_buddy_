@@ -8,6 +8,7 @@ import Typography from "@mui/material/Typography";
 const ReportProgressBar = ({ taskGroupId }) => {
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState("PENDING");
+  const [stage, setStage] = useState(""); // Added to track different stages
   const [snackbarOpen, setSnackbarOpen] = useState(false);
 
   useEffect(() => {
@@ -23,11 +24,16 @@ const ReportProgressBar = ({ taskGroupId }) => {
 
     socket.onmessage = (event) => {
       const data = JSON.parse(event.data);
-
       const roundedProgress = Math.round(data.progress);
 
       setProgress(roundedProgress);
       setStatus(data.status);
+
+      if (data.progress <= 25) setStage("Uploading file...");
+      else if (data.progress <= 50) setStage("Processing donations...");
+      else if (data.progress <= 75) setStage("Generating report...");
+      else if (data.progress < 100) setStage("Uploading report...");
+      else setStage("Completed!");
 
       if (data.status === "SUCCESS" || data.status === "FAILED") {
         setSnackbarOpen(true);
@@ -50,7 +56,7 @@ const ReportProgressBar = ({ taskGroupId }) => {
     <Box mt={2} width="100%">
       <LinearProgress variant="determinate" value={progress} />
       <Typography variant="body2" color="textSecondary" align="center">
-        {progress}% completed
+        {progress}% completed - {stage}
       </Typography>
       {status === "SUCCESS" && (
         <Snackbar open={snackbarOpen} autoHideDuration={6000}>

@@ -16,15 +16,17 @@ const DonorReportsTable = ({ refreshTrigger, searchQuery }) => {
   const [donorReports, setDonorReports] = useState([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [sortBy, setSortBy] = useState("full_name"); // Sorting field
+  const [sortOrder, setSortOrder] = useState("asc"); // asc or desc
 
   useEffect(() => {
-    fetchDonorReports(page, searchQuery);
-  }, [page, refreshTrigger, searchQuery]); 
+    fetchDonorReports(page, searchQuery, sortBy, sortOrder);
+  }, [page, refreshTrigger, searchQuery, sortBy, sortOrder]);
 
-  const fetchDonorReports = async (page, searchQuery) => {
+  const fetchDonorReports = async (page, searchQuery, sortBy, sortOrder) => {
     try {
       const response = await axios.get(
-        `http://localhost:8000/api/reports/donor-reports-list/?page=${page}&search=${searchQuery}`
+        `http://localhost:8000/api/reports/donor-reports-list/?page=${page}&search=${searchQuery}&sort_by=${sortBy}&sort_order=${sortOrder}`
       );
 
       setDonorReports(response.data.results);
@@ -37,7 +39,8 @@ const DonorReportsTable = ({ refreshTrigger, searchQuery }) => {
   const handleDownload = (reportUrl) => {
     const link = document.createElement("a");
     link.href = reportUrl;
-    link.download = reportUrl.split("/").pop();
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -47,6 +50,11 @@ const DonorReportsTable = ({ refreshTrigger, searchQuery }) => {
     setPage(value);
   };
 
+  const handleSortChange = (field) => {
+    setSortBy(field);
+    setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+  };
+
   return (
     <Box>
       <TableContainer component={Paper}>
@@ -54,13 +62,31 @@ const DonorReportsTable = ({ refreshTrigger, searchQuery }) => {
           <TableHead style={{ backgroundColor: "#f5f5f5" }}>
             <TableRow>
               <TableCell>
-                <b>Full Name</b>
+                <b
+                  onClick={() => handleSortChange("full_name")}
+                  style={{ cursor: "pointer" }}
+                >
+                  Full Name{" "}
+                  {sortBy === "full_name" && (sortOrder === "asc" ? "▲" : "▼")}
+                </b>
               </TableCell>
               <TableCell>
-                <b>Donor ID</b>
+                <b
+                  onClick={() => handleSortChange("donor_id")}
+                  style={{ cursor: "pointer" }}
+                >
+                  Donor ID{" "}
+                  {sortBy === "donor_id" && (sortOrder === "asc" ? "▲" : "▼")}
+                </b>
               </TableCell>
               <TableCell>
-                <b>Email</b>
+                <b
+                  onClick={() => handleSortChange("email")}
+                  style={{ cursor: "pointer" }}
+                >
+                  Email{" "}
+                  {sortBy === "email" && (sortOrder === "asc" ? "▲" : "▼")}
+                </b>
               </TableCell>
               <TableCell>
                 <b>Download Report</b>

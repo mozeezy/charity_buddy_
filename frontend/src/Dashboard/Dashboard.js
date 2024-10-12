@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
 import {
   Button,
@@ -13,6 +13,8 @@ import {
   List,
   Divider,
   TextField,
+  Chip,
+  CircularProgress, // Import CircularProgress
 } from "@mui/material";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -29,6 +31,7 @@ const Dashboard = () => {
   const [taskGroupId, setTaskGroupId] = useState(null);
   const [refreshReportsTable, setRefreshReportsTable] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isGeneratingReports, setIsGeneratingReports] = useState(false); // Used to track loading
 
   const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
@@ -63,6 +66,22 @@ const Dashboard = () => {
     multiple: false,
   });
 
+  useEffect(() => {
+    const handleBeforeUnload = (event) => {
+      if (isGeneratingReports) {
+        const message =
+          "Report generation is in progress. Are you sure you want to leave?";
+        event.returnValue = message;
+        return message;
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [isGeneratingReports]);
+
   const handleCloseSnackbar = () => {
     setSnackbarOpen(false);
   };
@@ -78,6 +97,8 @@ const Dashboard = () => {
 
   const handleUploadFile = async () => {
     if (!file) return;
+
+    setIsGeneratingReports(true); // Set loading state
 
     const formData = new FormData();
     formData.append("file", file);
@@ -106,6 +127,10 @@ const Dashboard = () => {
       setErrorMessage(error.response?.data?.error || "File upload failed.");
       setErrorSnackbarOpen(true);
     }
+  };
+
+  const handleReportCompletion = () => {
+    setIsGeneratingReports(false); // Reset loading state when report generation completes
   };
 
   const refreshReports = () => {
@@ -140,9 +165,19 @@ const Dashboard = () => {
             <Typography variant="body1">Drop the file here ...</Typography>
           ) : (
             <Typography variant="body1">
-              {file
-                ? `Uploaded file: ${file.name}`
-                : "Drag & drop an Excel or CSV file here, or click to select one"}
+              {file ? (
+                <>
+                  Uploaded file: {file.name}
+                  <Chip
+                    label={`Size: ${(file.size / (1024 * 1024)).toFixed(2)} MB`}
+                    color="primary"
+                    variant="outlined"
+                    style={{ marginLeft: "10px" }}
+                  />
+                </>
+              ) : (
+                "Drag & drop an Excel or CSV file here, or click to select one"
+              )}
             </Typography>
           )}
         </Paper>
@@ -158,7 +193,7 @@ const Dashboard = () => {
               variant="contained"
               color="primary"
               onClick={handleUploadFile}
-              disabled={!file}
+              disabled={isGeneratingReports} // DISABLE BUTTON DURING UPLOAD
             >
               Generate Reports
             </Button>
@@ -168,25 +203,27 @@ const Dashboard = () => {
           </Box>
         )}
 
-        <Box mt={2} display="flex" alignItems="center" justifyContent="center">
-          <Tooltip
-            title={
-              <>
-                <Typography variant="subtitle1" gutterBottom>
-                  Please upload a file with the following columns:
-                </Typography>
-                <Divider />
-                <List dense>{/* List of columns */}</List>
-              </>
-            }
+        {/* Show the loading spinner while generating reports */}
+        {isGeneratingReports && (
+          <Box
+            mt={2}
+            display="flex"
+            justifyContent="center"
+            alignItems="center"
           >
-            <IconButton>
-              <InfoOutlinedIcon />
-            </IconButton>
-          </Tooltip>
-        </Box>
+            <CircularProgress />
+            <Typography variant="body2" style={{ marginLeft: "10px" }}>
+              Generating reports, this may take a moment...
+            </Typography>
+          </Box>
+        )}
 
-        {taskGroupId && <ReportProgressBar taskGroupId={taskGroupId} />}
+        {taskGroupId && (
+          <ReportProgressBar
+            taskGroupId={taskGroupId}
+            onReportCompletion={handleReportCompletion} // Enable button on completion
+          />
+        )}
 
         <Snackbar
           open={snackbarOpen}
@@ -210,6 +247,7 @@ const Dashboard = () => {
           </Alert>
         </Snackbar>
       </Grid>
+
       <Grid item style={{ width: "80%", marginTop: 40 }}>
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Typography variant="h5" gutterBottom>
@@ -224,12 +262,12 @@ const Dashboard = () => {
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{ marginRight: "0.5rem" }}
             />
-
             <IconButton color="primary" onClick={refreshReports}>
               <RefreshIcon />
             </IconButton>
           </Box>
         </Box>
+
         <DonorReportsTable
           refreshTrigger={refreshReportsTable}
           searchQuery={searchQuery}

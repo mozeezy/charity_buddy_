@@ -15,6 +15,7 @@ from rest_framework.pagination import PageNumberPagination
 from celery.result import AsyncResult
 import uuid
 import redis
+from django.db.models import Q
 
 
 r = redis.Redis(host="localhost", port=6379, db=0)
@@ -184,17 +185,32 @@ class DonorReportsListView(APIView):
     def get(self, request):
         try:
             search_query = request.query_params.get("search", "")
+            sort_by = request.query_params.get(
+                "sort_by", "full_name"
+            )  # Default sort by full_name
+            sort_order = request.query_params.get(
+                "sort_order", "asc"
+            )  # Default sort order is ascending
+
+            # Build the queryset
             donors = Donor.objects.all()
 
+            # Search functionality
             if search_query:
                 donors = donors.filter(
                     first_name__icontains=search_query
                 ) | donors.filter(last_name__icontains=search_query)
 
+            # Sorting functionality
+            if sort_by == "full_name":
+                sort_by = "first_name"  # Sorting based on first name, adjust as needed
+            if sort_order == "desc":
+                sort_by = f"-{sort_by}"
+
+            donors = donors.order_by(sort_by)
+
             donor_reports = []
-
             for donor in donors:
-
                 latest_report = (
                     Report.objects.filter(donor=donor, status="SUCCESS")
                     .order_by("-date_generated")
@@ -211,8 +227,9 @@ class DonorReportsListView(APIView):
                         }
                     )
 
+            # Paginate the results
             paginator = PageNumberPagination()
-            paginator.page_size = 10
+            paginator.page_size = 10  # Number of reports per page
             paginated_reports = paginator.paginate_queryset(donor_reports, request)
 
             return paginator.get_paginated_response(paginated_reports)
