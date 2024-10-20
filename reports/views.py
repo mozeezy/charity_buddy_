@@ -15,7 +15,14 @@ from rest_framework.pagination import PageNumberPagination
 from celery.result import AsyncResult
 import uuid
 import redis
-from django.db.models import Q
+import zipfile
+from django.conf import settings
+from google.cloud import storage
+import os
+import io
+import tempfile
+from google.oauth2 import service_account
+from urllib.parse import urlparse, parse_qs
 
 
 r = redis.Redis(host="localhost", port=6379, db=0)
@@ -185,25 +192,18 @@ class DonorReportsListView(APIView):
     def get(self, request):
         try:
             search_query = request.query_params.get("search", "")
-            sort_by = request.query_params.get(
-                "sort_by", "full_name"
-            )  # Default sort by full_name
-            sort_order = request.query_params.get(
-                "sort_order", "asc"
-            )  # Default sort order is ascending
+            sort_by = request.query_params.get("sort_by", "full_name")
+            sort_order = request.query_params.get("sort_order", "asc")
 
-            # Build the queryset
             donors = Donor.objects.all()
 
-            # Search functionality
             if search_query:
                 donors = donors.filter(
                     first_name__icontains=search_query
                 ) | donors.filter(last_name__icontains=search_query)
 
-            # Sorting functionality
             if sort_by == "full_name":
-                sort_by = "first_name"  # Sorting based on first name, adjust as needed
+                sort_by = "first_name"
             if sort_order == "desc":
                 sort_by = f"-{sort_by}"
 
@@ -227,9 +227,8 @@ class DonorReportsListView(APIView):
                         }
                     )
 
-            # Paginate the results
             paginator = PageNumberPagination()
-            paginator.page_size = 10  # Number of reports per page
+            paginator.page_size = 10
             paginated_reports = paginator.paginate_queryset(donor_reports, request)
 
             return paginator.get_paginated_response(paginated_reports)
@@ -273,4 +272,128 @@ class ReportStatusView(APIView):
         except Exception as e:
             return Response(
                 {"error": f"Error fetching task status: {str(e)}"}, status=500
+            )
+
+
+class DownloadZipView(APIView):
+    def post(self, request, *args, **kwargs):
+        report_urls = request.data.get("reports", [])
+
+        if not report_urls:
+            return Response(
+                {"error": "No reports selected"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w") as zf:
+            client = storage.Client()
+            bucket = client.bucket(settings.GS_BUCKET_NAME)
+
+            for report_url in report_urls:
+                blob = bucket.blob(report_url)
+                file_data = blob.download_as_bytes()
+
+                filename = os.path.basename(report_url)
+                zf.writestr(filename, file_data)
+
+        zip_buffer.seek(0)
+
+        response = HttpResponse(zip_buffer, content_type="application/zip")
+        response["Content-Disposition"] = 'attachment; filename="donor_reports.zip"'
+
+        return response
+
+
+class AllReportsURLsView(APIView):
+    def get(self, request):
+
+        try:
+            search_query = request.query_params.get("search", "")
+            donors = Donor.objects.all()
+
+            if search_query:
+                donors = donors.filter(
+                    first_name__icontains=search_query
+                ) | donors.filter(last_name__icontains(search_query))
+
+            all_reports = []
+
+            for donor in donors:
+                latest_report = (
+                    Report.objects.filter(donor=donor, status="SUCCESS")
+                    .order_by("-date_generated")
+                    .first()
+                )
+                if latest_report:
+                    all_reports.append(
+                        {
+                            "donor_id": donor.donor_id,
+                            "full_name": f"{donor.first_name} {donor.last_name}",
+                            "email": donor.email,
+                            "report_url": latest_report.file_path,
+                        }
+                    )
+
+            return Response(all_reports, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response(
+                {"error": f"Error fetching all reports: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class DownloadSelectedReportsView(APIView):
+    def post(self, request):
+        try:
+            report_urls = request.data.get("report_urls", [])
+            if not report_urls:
+                return Response(
+                    {"error": "No reports selected."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            credentials_path = os.getenv("GS_CREDENTIALS")
+            credentials = service_account.Credentials.from_service_account_file(
+                credentials_path
+            )
+            client = storage.Client(credentials=credentials)
+            bucket_name = settings.GS_BUCKET_NAME
+            bucket = client.bucket(bucket_name)
+
+            temp_zip = tempfile.NamedTemporaryFile(delete=False)
+            zip_file_path = temp_zip.name
+
+            with zipfile.ZipFile(temp_zip, "w") as zipf:
+                for report_url in report_urls:
+
+                    parsed_url = urlparse(report_url)
+                    file_path = parsed_url.path.replace(f"/{bucket_name}/", "")
+
+                    blob = bucket.blob(file_path)
+                    if not blob.exists():
+                        return Response(
+                            {"error": f"File not found: {file_path}"},
+                            status=status.HTTP_404_NOT_FOUND,
+                        )
+
+                    with tempfile.NamedTemporaryFile(delete=False) as temp_report_file:
+
+                        blob.download_to_filename(temp_report_file.name)
+
+                        zipf.write(temp_report_file.name, os.path.basename(file_path))
+
+            temp_zip.close()
+
+            with open(zip_file_path, "rb") as zipf:
+                response = HttpResponse(zipf.read(), content_type="application/zip")
+                response["Content-Disposition"] = 'attachment; filename="reports.zip"'
+
+            os.remove(zip_file_path)
+
+            return response
+
+        except Exception as e:
+            return Response(
+                {"error": f"Error creating ZIP file: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

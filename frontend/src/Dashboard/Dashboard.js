@@ -14,7 +14,7 @@ import {
   Divider,
   TextField,
   Chip,
-  CircularProgress, // Import CircularProgress
+  CircularProgress,
 } from "@mui/material";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -31,7 +31,8 @@ const Dashboard = () => {
   const [taskGroupId, setTaskGroupId] = useState(null);
   const [refreshReportsTable, setRefreshReportsTable] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [isGeneratingReports, setIsGeneratingReports] = useState(false); // Used to track loading
+  const [isGeneratingReports, setIsGeneratingReports] = useState(false);
+  const [loading, setLoading] = useState(false); 
 
   const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
@@ -77,6 +78,7 @@ const Dashboard = () => {
     };
 
     window.addEventListener("beforeunload", handleBeforeUnload);
+
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
@@ -98,7 +100,8 @@ const Dashboard = () => {
   const handleUploadFile = async () => {
     if (!file) return;
 
-    setIsGeneratingReports(true); // Set loading state
+    setIsGeneratingReports(true);
+    setLoading(true); 
 
     const formData = new FormData();
     formData.append("file", file);
@@ -120,17 +123,15 @@ const Dashboard = () => {
       );
       setSnackbarOpen(true);
     } catch (error) {
-      console.error(
-        "Error uploading file:",
-        error.response?.data?.error || error.message
-      );
       setErrorMessage(error.response?.data?.error || "File upload failed.");
       setErrorSnackbarOpen(true);
+    } finally {
+      setLoading(false); 
     }
   };
 
   const handleReportCompletion = () => {
-    setIsGeneratingReports(false); // Reset loading state when report generation completes
+    setIsGeneratingReports(false);
   };
 
   const refreshReports = () => {
@@ -143,17 +144,18 @@ const Dashboard = () => {
       direction="column"
       alignItems="center"
       justifyContent="center"
+      spacing={2}
+      sx={{ p: { xs: 2, sm: 4, md: 6 } }}
       style={{ minHeight: "100vh" }}
     >
-      <Grid item>
-        <Typography variant="h4" gutterBottom>
+      <Grid item xs={12} sm={8} md={6}>
+        <Typography variant="h4" align="center" gutterBottom>
           Upload Excel File
         </Typography>
         <Paper
           elevation={3}
-          style={{
-            padding: 20,
-            width: 400,
+          sx={{
+            padding: 2,
             textAlign: "center",
             border: "2px dashed grey",
             backgroundColor: isDragActive ? "#e0f7fa" : "#fff",
@@ -161,39 +163,30 @@ const Dashboard = () => {
           {...getRootProps()}
         >
           <input {...getInputProps()} />
-          {isDragActive ? (
-            <Typography variant="body1">Drop the file here ...</Typography>
-          ) : (
-            <Typography variant="body1">
-              {file ? (
-                <>
-                  Uploaded file: {file.name}
-                  <Chip
-                    label={`Size: ${(file.size / (1024 * 1024)).toFixed(2)} MB`}
-                    color="primary"
-                    variant="outlined"
-                    style={{ marginLeft: "10px" }}
-                  />
-                </>
-              ) : (
-                "Drag & drop an Excel or CSV file here, or click to select one"
-              )}
-            </Typography>
-          )}
+          <Typography variant="body1" align="center">
+            {file ? (
+              <>
+                Uploaded file: {file.name}
+                <Chip
+                  label={`Size: ${(file.size / (1024 * 1024)).toFixed(2)} MB`}
+                  color="primary"
+                  variant="outlined"
+                  sx={{ marginLeft: 1 }}
+                />
+              </>
+            ) : (
+              "Drag & drop an Excel or CSV file here, or click to select one"
+            )}
+          </Typography>
         </Paper>
 
         {file && (
-          <Box
-            mt={2}
-            display="flex"
-            justifyContent="space-between"
-            width="100%"
-          >
+          <Box mt={2} display="flex" justifyContent="space-between">
             <Button
               variant="contained"
               color="primary"
               onClick={handleUploadFile}
-              disabled={isGeneratingReports} // DISABLE BUTTON DURING UPLOAD
+              disabled={isGeneratingReports}
             >
               Generate Reports
             </Button>
@@ -203,25 +196,34 @@ const Dashboard = () => {
           </Box>
         )}
 
-        {/* Show the loading spinner while generating reports */}
-        {isGeneratingReports && (
-          <Box
-            mt={2}
-            display="flex"
-            justifyContent="center"
-            alignItems="center"
+        <Box mt={2} display="flex" alignItems="center" justifyContent="center">
+          <Tooltip
+            title={
+              <>
+                <Typography variant="subtitle1" gutterBottom>
+                  Please upload a file with the following columns:
+                </Typography>
+                <Divider />
+                <List dense>{/* List of columns */}</List>
+              </>
+            }
           >
+            <IconButton>
+              <InfoOutlinedIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
+
+        {loading && (
+          <Box display="flex" justifyContent="center" mt={2}>
             <CircularProgress />
-            <Typography variant="body2" style={{ marginLeft: "10px" }}>
-              Generating reports, this may take a moment...
-            </Typography>
           </Box>
         )}
 
         {taskGroupId && (
           <ReportProgressBar
             taskGroupId={taskGroupId}
-            onReportCompletion={handleReportCompletion} // Enable button on completion
+            onReportCompletion={handleReportCompletion}
           />
         )}
 
@@ -248,7 +250,7 @@ const Dashboard = () => {
         </Snackbar>
       </Grid>
 
-      <Grid item style={{ width: "80%", marginTop: 40 }}>
+      <Grid item xs={12} sm={10} md={8} mt={4}>
         <Box display="flex" justifyContent="space-between" alignItems="center">
           <Typography variant="h5" gutterBottom>
             Donor Reports
@@ -260,7 +262,7 @@ const Dashboard = () => {
               size="small"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ marginRight: "0.5rem" }}
+              sx={{ marginRight: 2 }}
             />
             <IconButton color="primary" onClick={refreshReports}>
               <RefreshIcon />

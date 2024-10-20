@@ -8,7 +8,7 @@ import Typography from "@mui/material/Typography";
 const ReportProgressBar = ({ taskGroupId }) => {
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState("PENDING");
-  const [stage, setStage] = useState(""); // Added to track different stages
+  const [stage, setStage] = useState(""); 
   const [snackbarOpen, setSnackbarOpen] = useState(false);
 
   useEffect(() => {
@@ -59,14 +59,22 @@ const ReportProgressBar = ({ taskGroupId }) => {
         {progress}% completed - {stage}
       </Typography>
       {status === "SUCCESS" && (
-        <Snackbar open={snackbarOpen} autoHideDuration={6000}>
+        <Snackbar
+          open={snackbarOpen}
+          autoHideDuration={6000}
+          anchorOrigin={{ vertical: "top", horizontal: "right" }}
+        >
           <Alert severity="success">
             Report generation completed successfully!
           </Alert>
         </Snackbar>
       )}
       {status === "FAILED" && (
-        <Snackbar open={snackbarOpen} autoHideDuration={6000}>
+        <Snackbar
+          open={snackbarOpen}
+          autoHideDuration={6000}
+          anchorOrigin={{ vertical: "top", horizontal: "right" }}
+        >
           <Alert severity="error">Report generation failed.</Alert>
         </Snackbar>
       )}

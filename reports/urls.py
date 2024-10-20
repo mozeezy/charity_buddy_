@@ -4,6 +4,8 @@ from .views import (
     FetchReportView,
     DonorReportsListView,
     ReportStatusView,
+    AllReportsURLsView,
+    DownloadSelectedReportsView,
 )
 
 urlpatterns = [
@@ -13,4 +15,6 @@ urlpatterns = [
         "donor-reports-list/", DonorReportsListView.as_view(), name="donor-reports-list"
     ),
     path("status/<str:task_id>/", ReportStatusView.as_view(), name="report-status"),
+    path("download-zip/", DownloadSelectedReportsView.as_view(), name="download-zip"),
+    path("all-reports-urls/", AllReportsURLsView.as_view(), name="all-reports-urls"),
 ]
